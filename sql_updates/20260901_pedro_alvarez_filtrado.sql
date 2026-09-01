@@ -1,27 +1,58 @@
--- Update Pedro Álvarez (p1) with nota 100 for the last 8 evaluations of Filtrado (3.8.3.9-3.8.3.16)
--- Date: 01-09-2026
--- Worker: Pedro Álvarez (id: p1, index: 1 in workers array)
--- Procedures: 3.8.3.9 through 3.8.3.16 (indices 8-15 in PROCS array)
--- Nota: 100
--- Date: 2026-09-01
+-- Pedro Álvarez: nota 100 en las últimas 8 evaluaciones de Filtrado (3.8.3)
+-- Procedimientos: 3.8.3.9 .. 3.8.3.16   |   Fecha evaluación: 2026-09-01
+--
+-- Estructura real del dato:
+--   tabla  dashboard_state(id text, data jsonb, updated_at)
+--   fila   id = 'ops_ppt'
+--   data = { people: [ {id, g, rut, nombre, apPat, apMat, cargo}, ... ],
+--            cells:  { <personId>: { <procCode>: {dif, ev, difDate, evDate, evNota} } } }
+--
+-- El id de la persona NO se hardcodea: se resuelve por apellido/nombre, porque
+-- los ids (p1, p2, ...) dependen de altas y bajas hechas sobre la fila.
+-- Solo se fusionan los campos de evaluación; dif/difDate se conservan.
 
-do $
+do $$
 declare
-  current_cells jsonb;
-  eval_obj jsonb := '{"ev":"ok","evNota":100,"evDate":"2026-09-01"}'::jsonb;
-  i integer;
+  pid        text;
+  proc_codes text[] := array['3.8.3.9','3.8.3.10','3.8.3.11','3.8.3.12',
+                             '3.8.3.13','3.8.3.14','3.8.3.15','3.8.3.16'];
+  eval_patch jsonb := '{"ev":"ok","evNota":100,"evDate":"2026-09-01"}'::jsonb;
+  d          jsonb;
+  code       text;
 begin
-  -- Get current cells
-  select cells into current_cells from dashboard_state where id = 1;
-  
-  -- Update each procedure (indices 8-15 for 3.8.3.9-3.8.3.16)
-  -- Worker index is 1 (p1 = Pedro Álvarez)
-  for i in 8..15 loop
-    current_cells := jsonb_set(current_cells, array[i::text, '1'], eval_obj);
+  select data into d from dashboard_state where id = 'ops_ppt';
+  if d is null then
+    raise exception 'No existe la fila dashboard_state con id = ops_ppt';
+  end if;
+
+  -- Resolver el id de Pedro Álvarez desde el array people
+  select p->>'id' into pid
+  from jsonb_array_elements(d->'people') p
+  where upper(p->>'apPat') = 'ALVAREZ'
+    and upper(p->>'nombre') like 'PEDRO%';
+
+  if pid is null then
+    raise exception 'No se encontró a Pedro Álvarez en people';
+  end if;
+
+  foreach code in array proc_codes loop
+    if d #> array['cells', pid, code] is null then
+      raise exception 'No existe la celda cells.%.%', pid, code;
+    end if;
+    -- '||' fusiona: conserva dif y difDate, sobrescribe ev/evNota/evDate
+    d := jsonb_set(d, array['cells', pid, code],
+                   (d #> array['cells', pid, code]) || eval_patch);
   end loop;
-  
-  -- Update the database
-  update dashboard_state set cells = current_cells where id = 1;
-  
-  raise notice 'Successfully updated Pedro Álvarez with nota 100 for procedures 3.8.3.9-3.8.3.16 (date: 2026-09-01)';
-end $;
+
+  update dashboard_state
+     set data = d, updated_at = now()
+   where id = 'ops_ppt';
+
+  raise notice 'Pedro Álvarez (%): nota 100 en 3.8.3.9..3.8.3.16 con fecha 2026-09-01', pid;
+end $$;
+
+-- Verificación
+-- select k as proc, v
+-- from dashboard_state,
+--      lateral jsonb_each(data #> array['cells', 'p1']) as e(k, v)
+-- where id = 'ops_ppt' and k like '3.8.3.%';
