@@ -1,15 +1,18 @@
--- Filtrado (3.8.3): nota 100 en las 16 evaluaciones (3.8.3.1 .. 3.8.3.16, el proceso completo)
+----
+-- Filtrado (3.8.3): nota 100 en las 16 evaluaciones (3.8.3.1 .. 3.8.3.16)
 --   Victor Jofre            -> 2026-09-06
 --   Cristobal de la Fuente  -> 2026-09-07
 --
 -- OJO con de la Fuente: el dashboard parte el apellido por espacios y guarda
 -- solo el primer token en apPat, asi que su registro quedo como
 --   apPat = 'DE'   apMat = 'LA FUENTE CISTERNA'
--- Por eso aqui NO se compara apPat solo: se compara el apellido completo
+-- Por eso no se compara apPat solo, sino el apellido completo
 -- (apPat || ' ' || apMat), que funciona tanto con el dato como esta hoy como
 -- si alguien corrige el apPat a mano mas adelante.
--- Ademas se normalizan acentos, para que una edicion manual (CRISTOBAL ->
--- CRISTOBAL con tilde) no rompa la busqueda.
+--
+-- El '_' en CRIST_BAL y V_CTOR es un comodin de un caracter: calza con o sin
+-- tilde. Asi el script no lleva ningun acento adentro y no depende de como el
+-- editor maneje la codificacion al pegarlo.
 --
 -- Si un nombre no resuelve a exactamente una persona, el bloque aborta sin
 -- escribir nada. Solo se tocan ev, evNota y evDate; la difusion se conserva.
@@ -35,17 +38,15 @@ begin
 
   for w in
     select * from (values
-      ('JOFRE %',         'VICTOR%',    '2026-09-06'),
-      ('DE LA FUENTE %',  'CRISTOBAL%', '2026-09-07')
+      ('JOFRE %',         'V_CTOR%',    '2026-09-06'),
+      ('DE LA FUENTE %',  'CRIST_BAL%', '2026-09-07')
     ) as t(ap_like, nombre_like, eval_date)
   loop
     select count(*), min(p->>'id')
       into n_match, pid
     from jsonb_array_elements(d->'people') p
-    where translate(upper(coalesce(p->>'apPat','') || ' ' || coalesce(p->>'apMat','')),
-                    'ÁÉÍÓÚÜÑ', 'AEIOUUN') like w.ap_like
-      and translate(upper(coalesce(p->>'nombre','')),
-                    'ÁÉÍÓÚÜÑ', 'AEIOUUN') like w.nombre_like;
+    where upper(coalesce(p->>'apPat','') || ' ' || coalesce(p->>'apMat','')) like w.ap_like
+      and upper(coalesce(p->>'nombre','')) like w.nombre_like;
 
     if n_match = 0 then
       raise exception 'No se encontro a "%" con nombre "%" en people', w.ap_like, w.nombre_like;
