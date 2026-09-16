@@ -29,6 +29,15 @@ NUEVOS = [
 RANGO_DIF = '21/09/2026 al 25/09/2026'
 RANGO_EVA = '28/09/2026 al 09/10/2026'
 
+# ── datos reales exportados del dashboard: (pid, code) -> (difusion, evaluacion)
+CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'export_dashboard_20260916.csv')
+registro = {}
+with open(CSV, encoding='utf-8-sig') as fh:
+    for r in csv.DictReader(fh):
+        registro[(r['pid'], r['code'])] = (r['fecha_difusion'], r['fecha_evaluacion_nota'])
+if not registro:
+    raise SystemExit('El CSV de la Hoja 2 vino vacio')
+
 def nombre_completo(p):
     return ('%s %s' % (p['nombres'], p['apellidos'])).strip()
 
@@ -168,9 +177,9 @@ ws['A1'].font = FB(size=12)
 ws['A2'] = ('Criterio: se indica la fecha (dd/mm/aaaa) de la difusión y la fecha y nota de la evaluación. '
             '"N/A" = no aplica al cargo. "PENDIENTE" = sin registro de cumplimiento.')
 ws['A2'].font = F(size=9, italic=True)
-ws['A3'] = ('>>> PENDIENTE DE COMPLETAR: las celdas de fecha y nota se llenan con la exportación del '
-            'dashboard (consulta entregada por separado). NO ENVIAR ESTA HOJA EN BLANCO. <<<')
-ws['A3'].font = FB(size=10, color='FF9C0006'); ws['A3'].fill = ROJO
+ws['A3'] = ('Datos tomados del dashboard de control (exportación del 16/09/2026). '
+            'VERDE = registrado; ROJO = pendiente.')
+ws['A3'].font = F(size=9, italic=True)
 for fila, (etq, _) in enumerate(cabecera(ws, True), start=5):
     ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=4)
     c = ws.cell(fila, 1, etq); c.font = FB(); c.fill = GRIS; c.alignment = IZQ; c.border = BORDE
@@ -191,10 +200,19 @@ for k, pr in enumerate(procs):
         ws.column_dimensions[get_column_letter(col + off)].width = 16
 ws.row_dimensions[5].height = 60
 escribe_fijas(ws, 10, 11)
-for i in range(len(people)):
-    for k in range(len(procs)):
-        for off in (0, 1):
-            ws.cell(11 + i, 6 + k * 2 + off).border = BORDE
+faltantes_csv = []
+for i, p in enumerate(people):
+    for k, pr in enumerate(procs):
+        par = registro.get((p['id'], pr['code']))
+        if par is None:
+            faltantes_csv.append((p['id'], pr['code']))
+            par = ('PENDIENTE', 'PENDIENTE')
+        for off, val in enumerate(par):
+            c = ws.cell(11 + i, 6 + k * 2 + off, val)
+            c.font = F(); c.alignment = CEN; c.border = BORDE
+            c.fill = ROJO if val == 'PENDIENTE' else VERDE
+if faltantes_csv:
+    raise SystemExit('Faltan %d combinaciones en el CSV, p.ej. %s' % (len(faltantes_csv), faltantes_csv[:3]))
 ws.freeze_panes = 'F11'
 
 # ───────────────────────── Hoja 3 ─────────────────────────
