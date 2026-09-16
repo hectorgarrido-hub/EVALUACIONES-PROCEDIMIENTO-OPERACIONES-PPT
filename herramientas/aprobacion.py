@@ -13,7 +13,10 @@ APROBACION = {
     '3.8.3.4': '09/07/2026',  '3.8.3.5': '09/07/2026',  '3.8.3.6': '09/07/2026',
     '3.8.3.7': '09/07/2026',  '3.8.3.8': '09/07/2026',
     '3.8.3.9': '14/07/2026',  '3.8.3.10': '14/07/2026', '3.8.3.11': '14/07/2026',
-    # 3.8.3.12 Emergencia: NO aparece en las capturas
+    # 3.8.3.12 Emergencia = "Plan de Respuesta a Emergencia Local Valle Copiapo -
+    # Puerto Punta Totoralillo", aprobado por Paulina Andreoli C. el 25-02-2025.
+    # Unico documento del set aprobado en 2025; el resto es de 2026.
+    '3.8.3.12': '25/02/2025',
     '3.8.3.13': '14/07/2026', '3.8.3.14': '14/07/2026', '3.8.3.15': '14/07/2026',
     '3.8.3.16': '05/08/2026',
 }

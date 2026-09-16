@@ -27,7 +27,8 @@ people = [p for p in people if p['id'] not in ('p8', 'p36')]
 
 # --- RUT: 31 de la planilla + 3 cargados aparte ---
 ruts = {r['pid']: (r['cuerpo'] + '-' + r['dado'].upper()) for r in json.load(open('/tmp/cruce.json'))}
-ruts.update({'p0': '15338787-7', 'p9': '13515438-5', 'p19': '15014074-9'})
+ruts.update({'p0': '15338787-7', 'p9': '13515438-5', 'p19': '15014074-9',
+             'p37': '19353026-5'})
 for p in people:
     p['rut'] = ruts.get(p['id'], 'POR CONFIRMAR')
 

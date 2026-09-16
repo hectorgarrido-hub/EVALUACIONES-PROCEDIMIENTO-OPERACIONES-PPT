@@ -23,6 +23,15 @@ IZQ    = Alignment(horizontal='left', vertical='center', wrap_text=True)
 
 EMPRESA = 'COMPAÑÍA MINERA DEL PACIFICO [CMP]'
 CONF    = 'POR CONFIRMAR'
+LIC     = 'LICENCIA MÉDICA'
+
+# Trabajadores ausentes con licencia medica: sus pendientes no son incumplimiento,
+# quedan supeditados a la reincorporacion. Se marcan en amarillo, no en rojo.
+SITUACION = {
+    'p10': 'Licencia médica',   # SANTIBAÑEZ BAHAMONDES, CRISTOPHER NICOLA
+    'p28': 'Licencia médica',   # SAAVEDRA, LEONARDO
+}
+REINC = 'A su reincorporación'
 
 NUEVOS = [
     ('Plan de Gestión de Riesgos de Desastres', CONF),
@@ -96,6 +105,12 @@ portada = [
                        'según el criterio indicado más abajo; o dato por completar/confirmar.', 'amar'),
     ('Nota: en la Hoja 1 el color no indica cumplimiento: la "X" señala únicamente que el documento '
      'aplica al trabajador y el amarillo señala "N/A".', None, None, 'nota'),
+    (None, None, None, None),
+    ('TRABAJADORES AUSENTES CON LICENCIA MÉDICA', None, None, 'titulo'),
+    ('Los trabajadores que se encuentran con licencia médica figuran en la Hoja 2 con la leyenda '
+     '"LICENCIA MÉDICA" en amarillo, en lugar de "PENDIENTE" en rojo. Su difusión y evaluación no '
+     'constituyen incumplimiento: quedan supeditadas a su reincorporación, y así se consignan en la '
+     'Hoja 3 como fecha comprometida.', None, None, 'nota'),
     (None, None, None, None),
     ('CRITERIO DE DIFUSIÓN INFORMATIVA', None, None, 'titulo'),
     ('Difusión informativa: para trabajadores que reciben una difusión exclusivamente informativa, pero '
@@ -232,9 +247,12 @@ for i, p in enumerate(people):
             if previa:
                 val = val + ' (previa a aprobación)'
                 previas.append((p['id'], pr['code']))
+            ausente = p['id'] in SITUACION and val == 'PENDIENTE'
+            if ausente:
+                val = LIC
             c = ws.cell(11 + i, 6 + k * 2 + off, val)
             c.font = F(); c.alignment = CEN; c.border = BORDE
-            c.fill = ROJO if (val == 'PENDIENTE' or previa) else VERDE
+            c.fill = AMAR if ausente else (ROJO if (val == 'PENDIENTE' or previa) else VERDE)
 if faltantes_csv:
     raise SystemExit('Faltan %d combinaciones en el CSV, p.ej. %s' % (len(faltantes_csv), faltantes_csv[:3]))
 if previas:
@@ -265,12 +283,17 @@ for doc, cod in NUEVOS:
     for p in people:
         n += 1
         r = 4 + n
+        ausente = p['id'] in SITUACION
+        f_dif = '%s (%s)' % (REINC, SITUACION[p['id']].lower()) if ausente else RANGO_DIF
+        f_eva = '%s (%s)' % (REINC, SITUACION[p['id']].lower()) if ausente else RANGO_EVA
         vals = [n, p['rut'], nombre_completo(p), p['cargo'], EMPRESA, p['g'],
-                'Difusión y Evaluación', doc, cod, RANGO_DIF, RANGO_EVA, CONF]
+                'Difusión y Evaluación', doc, cod, f_dif, f_eva, CONF]
         for j, v in enumerate(vals, start=1):
             c = ws.cell(r, j, v); c.font = F(); c.border = BORDE
             c.alignment = CEN if j in (1, 2, 6, 9, 10, 11) else IZQ
         ws.cell(r, 7).fill = ROJO
+        if ausente:
+            ws.cell(r, 10).fill = AMAR; ws.cell(r, 11).fill = AMAR
         if p['rut'] == CONF: ws.cell(r, 2).fill = AMAR
         ws.cell(r, 9).fill = AMAR
         ws.cell(r, 12).fill = AMAR
@@ -284,10 +307,10 @@ notas = [
     'El responsable de ejecución está POR CONFIRMAR para cada turno.',
     'Se incluye la columna "Turno" (G1 a G4) porque la difusión debe coordinarse por turno dentro '
     'de la semana comprometida. No forma parte del formato original de la planilla.',
-    'Los trabajadores Leonardo Saavedra y Gabriela Varas figuran con RUT POR CONFIRMAR: no aparecen '
-    'en el listado de RUT recibido.',
-    'Documento 3.8.3.12 "Procedimiento de Emergencia": su fecha de aprobación quedó POR CONFIRMAR, '
-    'por no figurar en el repositorio documental consultado.',
+    'Los trabajadores con licencia médica llevan como fecha comprometida "A su reincorporación": '
+    + ', '.join(sorted(nombre_completo(p) for p in people if p['id'] in SITUACION)) + '.',
+    'Documento 3.8.3.12 "Procedimiento de Emergencia": corresponde al "Plan de Respuesta a Emergencia '
+    'Local Valle Copiapó — Puerto Punta Totoralillo", aprobado el 25/02/2025.',
 ]
 if previas:
     notas.append(
@@ -301,6 +324,11 @@ for i, t in enumerate(notas):
     c.font = FB() if i == 0 else F(size=9)
     c.alignment = IZQ
 
+sin_rut = [nombre_completo(p) for p in people if p['rut'] == CONF]
+if sin_rut:
+    ws.cell(fila + len(notas), 1, 'Trabajadores con RUT POR CONFIRMAR: ' + ', '.join(sin_rut) + '.').font = F(size=9)
+
 wb.save('/home/user/EVALUACIONES-PROCEDIMIENTO-OPERACIONES-PPT/SNGM_Capacitacion_3.8_Operaciones.xlsx')
+print('sin RUT:', sin_rut or 'ninguno')
 print('hojas:', wb.sheetnames)
 print('trabajadores:', len(people), '| procedimientos:', len(procs), '| filas hoja 3:', n)
