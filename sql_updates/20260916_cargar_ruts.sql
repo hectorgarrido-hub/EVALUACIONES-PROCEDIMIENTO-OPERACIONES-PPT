@@ -1,15 +1,16 @@
 ----
 -- Carga / actualiza los RUT de los trabajadores.
 --
+-- Bloque autocontenido: calcula el digito verificador aqui mismo, no necesita
+-- crear ninguna funcion antes.
+--
 -- COMO USARLO: llena la lista de abajo con pares (pid, rut). El rut puede ir
 -- en cualquier formato: 12.345.678-5, 12345678-5 o 123456785; el script lo
 -- normaliza a 12.345.678-5 antes de guardar.
 --
--- Valida el digito verificador (modulo 11) de TODOS antes de escribir. Si uno
--- solo esta malo, no escribe nada y te dice cual es y cual seria el correcto.
--- Es a proposito: mas vale corregir la lista que dejar la mitad cargada.
+-- Valida el verificador (modulo 11) de TODOS antes de escribir. Si uno solo
+-- esta malo, no escribe nada y dice cual es y cual seria el correcto.
 --
--- Los pid son los que devolvio la consulta de control (p0..p37).
 -- Solo se toca el campo rut; el resto de la ficha queda igual.
 
 do $$
@@ -24,6 +25,9 @@ declare
   errores    text[] := '{}';
   faltantes  text[] := '{}';
   n          int := 0;
+  s          int;
+  peso       int;
+  i          int;
 begin
   ------------------------------------------------------------------
   -- LISTA: pid -> rut
@@ -57,7 +61,16 @@ begin
       continue;
     end if;
 
-    dv_ok := rut_dv(cuerpo);
+    -- digito verificador por modulo 11, de derecha a izquierda con pesos 2..7
+    s := 0;
+    peso := 2;
+    for i in reverse length(cuerpo)..1 loop
+      s := s + (substr(cuerpo, i, 1))::int * peso;
+      peso := case when peso = 7 then 2 else peso + 1 end;
+    end loop;
+    i := 11 - (s % 11);
+    dv_ok := case i when 11 then '0' when 10 then 'K' else i::text end;
+
     if dv_dado <> dv_ok then
       errores := errores || (reg.pid || ': "' || reg.rut || '" DV incorrecto, deberia ser -' || dv_ok);
     end if;
