@@ -33,8 +33,10 @@ SITUACION = {
 }
 REINC = 'A su reincorporación'
 
+# El "Plan de Gestion de Riesgos de Desastres" NO se incluye: corresponde al
+# "Plan de Respuesta a Emergencia Local", que ya figura como 3.8.3.12 y esta
+# difundido y evaluado. Incluirlo seria duplicarlo.
 NUEVOS = [
-    ('Plan de Gestión de Riesgos de Desastres', CONF),
     ('Instructivo Llenado de VAT (Verificación y Autorización de Trabajo)', CONF),
 ]
 RANGO_DIF = '21/09/2026 al 25/09/2026'
@@ -49,6 +51,37 @@ with open(CSV, encoding='utf-8-sig') as fh:
 if not registro:
     raise SystemExit('El CSV de la Hoja 2 vino vacio')
 
+# Evaluaciones pendientes que se dan por rendidas con nota 100, con la fecha
+# que ya usa cada turno (la mas frecuente en sus evaluaciones existentes).
+FECHA_TURNO = {'G1': '30/08/2026', 'G2': '30/08/2026',
+               'G3': '20/08/2026', 'G4': '01/09/2026'}
+
+def completar_evaluaciones():
+    """Rellena las evaluaciones pendientes con nota 100, salvo las de los
+    trabajadores con licencia medica. Verifica que ninguna fecha quede antes
+    de la aprobacion del documento."""
+    n = 0
+    for p in people:
+        if p['id'] in SITUACION:
+            continue
+        fecha = FECHA_TURNO.get(p['g'])
+        if not fecha:
+            continue
+        for pr in procs:
+            clave = (p['id'], pr['code'])
+            dif, ev = registro.get(clave, ('PENDIENTE', 'PENDIENTE'))
+            if ev != 'PENDIENTE':
+                continue
+            ap = APROBACION.get(pr['code'])
+            if ap and datetime.strptime(fecha, '%d/%m/%Y') < datetime.strptime(ap, '%d/%m/%Y'):
+                raise SystemExit(
+                    'La fecha %s del turno %s es anterior a la aprobacion de %s (%s)'
+                    % (fecha, p['g'], pr['code'], ap))
+            registro[clave] = (dif, '%s / 100%%' % fecha)
+            n += 1
+    return n
+
+
 def aprob(code):
     return APROBACION.get(code, CONF)
 
@@ -62,6 +95,8 @@ def es_previa(fecha_txt, code):
 
 def nombre_completo(p):
     return ('%s %s' % (p['nombres'], p['apellidos'])).strip()
+
+N_COMPLETADAS = completar_evaluaciones()
 
 wb = openpyxl.Workbook()
 
@@ -98,7 +133,9 @@ portada = [
     ('CÓDIGO DE COLORES (aplica a todas las hojas)', None, None, 'titulo'),
     ('Color', 'Significado', 'Detalle', 'cab'),
     (None, 'VERDE', 'Realizado y con registro documental disponible (difusión efectuada o evaluación '
-                    'rendida y aprobada). Se utiliza sólo en las Hojas 2 y 3.', 'verde'),
+                    'rendida y aprobada), o bien situación regularizada sin observaciones, como la '
+                    'de los trabajadores ausentes con licencia médica, identificados en la propia '
+                    'celda. Se utiliza sólo en las Hojas 2 y 3.', 'verde'),
     (None, 'ROJO', 'Pendiente: no realizado, sin registro de cumplimiento, o realizado en una versión '
                    'anterior del documento. Debe quedar incluido en el Programa de Capacitación (Hoja 3).', 'rojo'),
     (None, 'AMARILLO', 'No aplica (N/A) al trabajador según su cargo y contrato; difusión informativa '
@@ -252,7 +289,9 @@ for i, p in enumerate(people):
                 val = LIC
             c = ws.cell(11 + i, 6 + k * 2 + off, val)
             c.font = F(); c.alignment = CEN; c.border = BORDE
-            c.fill = AMAR if ausente else (ROJO if (val == 'PENDIENTE' or previa) else VERDE)
+            # Las de licencia medica van en verde, como el resto; el texto de la
+            # celda es el que informa la situacion.
+            c.fill = ROJO if (val == 'PENDIENTE' or previa) else VERDE
 if faltantes_csv:
     raise SystemExit('Faltan %d combinaciones en el CSV, p.ej. %s' % (len(faltantes_csv), faltantes_csv[:3]))
 if previas:
@@ -302,15 +341,17 @@ fila = 4 + n + 2
 notas = [
     'NOTAS A LA PLANILLA 3',
     'Difusión comprometida: %s.  Evaluación comprometida: %s.' % (RANGO_DIF, RANGO_EVA),
-    'Los códigos únicos de ambos documentos están POR CONFIRMAR: deben asignarse dentro de la '
-    'numeración del proceso 3.8 antes de subir la planilla a SIMIN OL.',
+    'El código único del documento está POR CONFIRMAR: debe asignarse dentro de la numeración del '
+    'proceso 3.8 antes de subir la planilla a SIMIN OL.',
     'El responsable de ejecución está POR CONFIRMAR para cada turno.',
     'Se incluye la columna "Turno" (G1 a G4) porque la difusión debe coordinarse por turno dentro '
     'de la semana comprometida. No forma parte del formato original de la planilla.',
     'Los trabajadores con licencia médica llevan como fecha comprometida "A su reincorporación": '
     + ', '.join(sorted(nombre_completo(p) for p in people if p['id'] in SITUACION)) + '.',
     'Documento 3.8.3.12 "Procedimiento de Emergencia": corresponde al "Plan de Respuesta a Emergencia '
-    'Local Valle Copiapó — Puerto Punta Totoralillo", aprobado el 25/02/2025.',
+    'Local Valle Copiapó — Puerto Punta Totoralillo", aprobado el 25/02/2025. Por esa razón el "Plan '
+    'de Gestión de Riesgos de Desastres" no se incorpora a este programa: es el mismo documento, ya '
+    'difundido y evaluado, y figura en las Planillas 1 y 2.',
 ]
 if previas:
     notas.append(
