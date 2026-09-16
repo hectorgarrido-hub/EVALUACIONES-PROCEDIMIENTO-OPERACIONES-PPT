@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 import sys, csv, os
+from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from datos import procs, people
+from aprobacion import APROBACION, VERSION
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -37,6 +39,17 @@ with open(CSV, encoding='utf-8-sig') as fh:
         registro[(r['pid'], r['code'])] = (r['fecha_difusion'], r['fecha_evaluacion_nota'])
 if not registro:
     raise SystemExit('El CSV de la Hoja 2 vino vacio')
+
+def aprob(code):
+    return APROBACION.get(code, CONF)
+
+def es_previa(fecha_txt, code):
+    """True si la fecha es anterior a la aprobacion del documento."""
+    ap = APROBACION.get(code)
+    if not ap or fecha_txt == 'PENDIENTE':
+        return False
+    f = datetime.strptime(fecha_txt[:10], '%d/%m/%Y').date()
+    return f < datetime.strptime(ap, '%d/%m/%Y').date()
 
 def nombre_completo(p):
     return ('%s %s' % (p['nombres'], p['apellidos'])).strip()
@@ -154,11 +167,14 @@ for fila, (etq, _) in enumerate(cabecera(ws, False), start=4):
 for k, pr in enumerate(procs):
     col = 6 + k
     ws.column_dimensions[get_column_letter(col)].width = 13
+    ap = aprob(pr['code'])
     vals = [(4, pr['nombre'], AZUL, BLANCO), (5, pr['code'], AMAR, FB()),
-            (6, CONF, AMAR, F()), (7, CONF, AMAR, F())]
+            (6, VERSION, AMAR if VERSION == CONF else None, F()),
+            (7, ap, AMAR if ap == CONF else None, F())]
     for fila, v, fill, font in vals:
-        c = ws.cell(fila, col, v); c.fill = fill; c.font = font
-        c.alignment = CEN; c.border = BORDE
+        c = ws.cell(fila, col, v)
+        if fill is not None: c.fill = fill
+        c.font = font; c.alignment = CEN; c.border = BORDE
 ws.row_dimensions[4].height = 60
 escribe_fijas(ws, 8, 9)
 for k, pr in enumerate(procs):
@@ -189,11 +205,14 @@ for k, pr in enumerate(procs):
     ws.merge_cells(start_row=5, start_column=col, end_row=5, end_column=col + 1)
     c = ws.cell(5, col, pr['nombre']); c.fill = AZUL; c.font = BLANCO; c.alignment = CEN; c.border = BORDE
     ws.cell(5, col + 1).fill = AZUL; ws.cell(5, col + 1).border = BORDE
-    for fila, v, fill in ((6, pr['code'], AMAR), (7, CONF, AMAR), (8, CONF, AMAR), (9, pr['code'], AMAR)):
+    ap = aprob(pr['code'])
+    for fila, v, fill in ((6, pr['code'], AMAR), (7, VERSION, None),
+                          (8, ap, AMAR if ap == CONF else None), (9, pr['code'], AMAR)):
         ws.merge_cells(start_row=fila, start_column=col, end_row=fila, end_column=col + 1)
-        c = ws.cell(fila, col, v); c.fill = fill; c.alignment = CEN; c.border = BORDE
+        c = ws.cell(fila, col, v); c.alignment = CEN; c.border = BORDE
         c.font = FB() if fila in (6, 9) else F()
-        ws.cell(fila, col + 1).fill = fill; ws.cell(fila, col + 1).border = BORDE
+        if fill is not None: c.fill = fill; ws.cell(fila, col + 1).fill = fill
+        ws.cell(fila, col + 1).border = BORDE
     for off, tit in ((0, 'Fecha difusión'), (1, 'Fecha evaluación / nota')):
         c = ws.cell(10, col + off, tit)
         c.fill = AZUL; c.font = BLANCO; c.alignment = CEN; c.border = BORDE
@@ -201,6 +220,7 @@ for k, pr in enumerate(procs):
 ws.row_dimensions[5].height = 60
 escribe_fijas(ws, 10, 11)
 faltantes_csv = []
+previas = []
 for i, p in enumerate(people):
     for k, pr in enumerate(procs):
         par = registro.get((p['id'], pr['code']))
@@ -208,11 +228,18 @@ for i, p in enumerate(people):
             faltantes_csv.append((p['id'], pr['code']))
             par = ('PENDIENTE', 'PENDIENTE')
         for off, val in enumerate(par):
+            previa = off == 0 and es_previa(val, pr['code'])
+            if previa:
+                val = val + ' (previa a aprobación)'
+                previas.append((p['id'], pr['code']))
             c = ws.cell(11 + i, 6 + k * 2 + off, val)
             c.font = F(); c.alignment = CEN; c.border = BORDE
-            c.fill = ROJO if val == 'PENDIENTE' else VERDE
+            c.fill = ROJO if (val == 'PENDIENTE' or previa) else VERDE
 if faltantes_csv:
     raise SystemExit('Faltan %d combinaciones en el CSV, p.ej. %s' % (len(faltantes_csv), faltantes_csv[:3]))
+ws['A4'] = ('Atención: %d difusiones están fechadas antes de la aprobación del documento respectivo '
+            'y se marcan en rojo; corresponden a re-instrucción en la versión vigente.' % len(previas))
+ws['A4'].font = FB(size=9, color='FF9C0006')
 ws.freeze_panes = 'F11'
 
 # ───────────────────────── Hoja 3 ─────────────────────────
@@ -257,6 +284,12 @@ notas = [
     'de la semana comprometida. No forma parte del formato original de la planilla.',
     'Los trabajadores Leonardo Saavedra y Gabriela Varas figuran con RUT POR CONFIRMAR: no aparecen '
     'en el listado de RUT recibido.',
+    'Documento 3.8.3.12 "Procedimiento de Emergencia": su fecha de aprobación quedó POR CONFIRMAR, '
+    'por no figurar en el repositorio documental consultado.',
+    'Documento 3.8.3.16 "Recuperación de Concentrado de Piscinas": aprobado el 05/08/2026, posterior '
+    'a la difusión registrada el 20/07/2026. Conforme al criterio de esta planilla, esas difusiones '
+    'corresponden a una versión anterior y deben rehacerse por re-instrucción; quedan marcadas en '
+    'rojo en la Hoja 2 y aún no están incorporadas a este programa.',
 ]
 for i, t in enumerate(notas):
     c = ws.cell(fila + i, 1, t)
