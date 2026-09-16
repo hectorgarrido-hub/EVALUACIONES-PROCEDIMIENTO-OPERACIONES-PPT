@@ -237,9 +237,11 @@ for i, p in enumerate(people):
             c.fill = ROJO if (val == 'PENDIENTE' or previa) else VERDE
 if faltantes_csv:
     raise SystemExit('Faltan %d combinaciones en el CSV, p.ej. %s' % (len(faltantes_csv), faltantes_csv[:3]))
-ws['A4'] = ('Atención: %d difusiones están fechadas antes de la aprobación del documento respectivo '
-            'y se marcan en rojo; corresponden a re-instrucción en la versión vigente.' % len(previas))
-ws['A4'].font = FB(size=9, color='FF9C0006')
+if previas:
+    ws['A4'] = ('Atención: %d difusiones están fechadas antes de la aprobación del documento '
+                'respectivo y se marcan en rojo; corresponden a re-instrucción en la versión '
+                'vigente.' % len(previas))
+    ws['A4'].font = FB(size=9, color='FF9C0006')
 ws.freeze_panes = 'F11'
 
 # ───────────────────────── Hoja 3 ─────────────────────────
@@ -286,10 +288,13 @@ notas = [
     'en el listado de RUT recibido.',
     'Documento 3.8.3.12 "Procedimiento de Emergencia": su fecha de aprobación quedó POR CONFIRMAR, '
     'por no figurar en el repositorio documental consultado.',
-    'Documento 3.8.3.16 "Recuperación de Concentrado de Piscinas": aprobado el 05/08/2026, posterior '
-    'a la difusión registrada el 20/07/2026. Conforme al criterio de esta planilla, esas difusiones '
-    'corresponden a una versión anterior y deben rehacerse por re-instrucción; quedan marcadas en '
-    'rojo en la Hoja 2 y aún no están incorporadas a este programa.',
+]
+if previas:
+    notas.append(
+        'Se detectaron %d difusiones anteriores a la fecha de aprobación de su documento. Quedan '
+        'marcadas en rojo en la Hoja 2 y corresponden a re-instrucción en la versión vigente.'
+        % len(previas))
+notas += [
 ]
 for i, t in enumerate(notas):
     c = ws.cell(fila + i, 1, t)
